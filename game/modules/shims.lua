@@ -33,3 +33,12 @@ function table.contains(tab, item)
   end
   return nil
 end
+
+function table.dupe(tab)
+  local t = { }
+  t.n = #tab
+  for i=1,#n do
+    t[i] = tab[i]
+  end
+  return t
+end
