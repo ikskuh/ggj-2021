@@ -42,6 +42,15 @@ local function loadTheme(name)
   return theme
 end
 
+local function loadStory(index)
+  local path = ("story/Story_%02d"):format(index)
+  local story = {
+    voiceover = love.audio.newSource(path..".ogg", "stream"),
+    strings = love.filesystem.load(path..".lua")(),
+  }
+  return story
+end
+
 local function createMap(w, h)
   local map = {
     [TYPE] = TYPE.map,
@@ -116,164 +125,217 @@ local function createCell(note)
   return cell
 end
 
+local globals
+
+local function loadLevel(index)
+
+  if state then
+    if state.mode == "gameplay" then
+      state.theme.ambient:stop()
+    elseif state.mode == "story" then
+      state.story.voiceover:stop()
+    end
+  end
+
+  local level = index and globals.levels[index]
+  if level ~= nil then
+    state.mode = level.type
+    if level.type == "story" then
+      state = { mode="story" }
+
+      state.story = level.story or error("story requires story!")
+      state.story.voiceover:play()
+
+      state.time = 0
+
+    elseif level.type == "gameplay" then
+
+      state = { mode="gameplay" }
+      state.theme = level.theme or error("gameplay requires theme!")
+      state.theme.ambient:setVolume(0.5)
+      state.theme.ambient:play()
+
+      state.map = createMap(15, 6)
+
+      for x=1,state.map.width-1 do
+        for y=1,state.map.height do
+          local n = love.math.random(7)-1
+          local note = {[TYPE]=TYPE.note, len = love.math.random(6)}
+          if n > 0 then
+            note.note = n
+          end
+          state.map:set(x, y, createCell(note))
+        end
+      end
+
+      -- Generate path through the level
+      do
+        local seq = state.theme.track
+
+        if #seq < state.map.width - 1 then
+          error("sequence too short, min. 14 elements required!")
+        end
+
+        local prev_cell = nil
+        local previous_pos = hexagon.OffsetCoord(0, 4)
+
+        local n_horizontals = #seq - 14
+        local horizontals = {} 
+        if n_horizontals > 0 then
+          local temp = {}
+          for i=1,state.map.width-1 do
+            temp[i] = { n=i, weight = love.math.random() }
+          end
+          table.sort(temp, function(a,b) return a.weight < b.weight end)
+          for i=n_horizontals+1,#temp do
+            temp[i] = nil
+          end
+
+          for i=1,#temp do
+            local n = temp[i].n
+            horizontals[n] = true
+          end
+
+        end
+
+        for i=1,#seq do
+
+          local next = nil
+
+          if horizontals[previous_pos.col] then
+            horizontals[previous_pos.col] = nil
+            
+            local tries = 0
+            while true do
+              next = hexagon.OffsetCoord(previous_pos.col, previous_pos.row + (love.math.random() >= 0.5 and 1 or -1))
+              if state.map:validPos(next.col, next.row) then
+                break
+              else
+                tries = tries + 1
+                if tries > 30 then
+                  break
+                end
+              end
+            end
+            if tries > 30 then
+              break
+            end
+
+          else
+            local tries = 0
+            while true do
+              next = hexagon.oddqOffsetNeighbor(previous_pos, love.math.random(2))
+              if state.map:validPos(next.col, next.row) then
+                break
+              else
+                tries = tries + 1
+                if tries > 30 then
+                  break
+                end
+              end
+            end
+            if tries > 30 then
+              break
+            end
+          end
+
+          previous_pos = next
+          local cell = state.map:set(next.col, next.row, createCell(seq[i]))
+
+          seq[i].cell = cell
+          
+          if prev_cell then
+            -- prev_cell.next = cell
+          end
+          prev_cell = cell
+        end
+      end
+      state.start_cell = createCell()
+      state.start_cell.x = 0
+      state.start_cell.y = 4
+
+      state.end_cells = { }
+      do
+        table.insert(state.end_cells, state.map:set(15,1,createCell()))
+        table.insert(state.end_cells, state.map:set(15,2,createCell()))
+        table.insert(state.end_cells, state.map:set(15,3,createCell()))
+        table.insert(state.end_cells, state.map:set(15,4,createCell()))
+        table.insert(state.end_cells, state.map:set(15,5,createCell()))
+      end
+
+      local active_cells = { state.start_cell }
+      for x=1,state.map.width do
+        for y=1,state.map.height do
+          local cell = state.map:get(x,y)
+          if cell then
+            assert(cell.x, "cell is missing coordinate!")
+            assert(cell.y, "cell is missing coordinate!")
+            table.insert(active_cells, cell)
+          end
+        end
+      end
+      state.active_cells = active_cells
+      state.current_cell = state.start_cell
+
+      state.bird = {
+        frame = 1,
+        x = 0,
+        y = 0,
+        cell = state.start_cell,
+        frames = globals.bird_frames,
+      }
+
+      state.scroll_offset = {
+        x = 4,
+        y = 0,
+      }
+    else 
+      error("invalid level type!")
+    end
+  else
+    state = { mode="story" }
+  end
+
+  state.level_index = level and tonumber(index) 
+end
+
 function love.load()
 
-  love.math.setRandomSeed(love.timer.getTime())
-
-  state.theme = loadTheme("harbour")
-  state.theme.ambient:setVolume(0.5)
-  state.theme.ambient:play()
-
-  state.map = createMap(15, 6)
-
-  for x=1,state.map.width-1 do
-    for y=1,state.map.height do
-      local n = love.math.random(7)-1
-      local note = {[TYPE]=TYPE.note, len = love.math.random(6)}
-      if n > 0 then
-        note.note = n
-      end
-      state.map:set(x, y, createCell(note))
-    end
-  end
-
-  -- Generate path through the level
-  do
-    local seq = state.theme.track
-
-    if #seq < state.map.width - 1 then
-      error("sequence too short, min. 14 elements required!")
-    end
-
-    local prev_cell = nil
-    local previous_pos = hexagon.OffsetCoord(0, 4)
-
-    local n_horizontals = #seq - 14
-    local horizontals = {} 
-    if n_horizontals > 0 then
-      local temp = {}
-      for i=1,state.map.width-1 do
-        temp[i] = { n=i, weight = love.math.random() }
-      end
-      table.sort(temp, function(a,b) return a.weight < b.weight end)
-      for i=n_horizontals+1,#temp do
-        temp[i] = nil
-      end
-
-      for i=1,#temp do
-        local n = temp[i].n
-        horizontals[n] = true
-      end
-
-    end
-
-    for i=1,#seq do
-
-      local next = nil
-
-      if horizontals[previous_pos.col] then
-        horizontals[previous_pos.col] = nil
-        
-        local tries = 0
-        while true do
-          next = hexagon.OffsetCoord(previous_pos.col, previous_pos.row + (love.math.random() >= 0.5 and 1 or -1))
-          if state.map:validPos(next.col, next.row) then
-            break
-          else
-            tries = tries + 1
-            if tries > 30 then
-              break
-            end
-          end
-        end
-        if tries > 30 then
-          break
-        end
-
-      else
-        local tries = 0
-        while true do
-          next = hexagon.oddqOffsetNeighbor(previous_pos, love.math.random(2))
-          if state.map:validPos(next.col, next.row) then
-            break
-          else
-            tries = tries + 1
-            if tries > 30 then
-              break
-            end
-          end
-        end
-        if tries > 30 then
-          break
-        end
-      end
-
-      previous_pos = next
-      local cell = state.map:set(next.col, next.row, createCell(seq[i]))
-
-      seq[i].cell = cell
-      
-      if prev_cell then
-        -- prev_cell.next = cell
-      end
-      prev_cell = cell
-    end
-  end
-  state.start_cell = createCell()
-  state.start_cell.x = 0
-  state.start_cell.y = 4
-  -- state.start_cell.next = state.map:get(1,3)
-
-  state.end_cells = { }
-  do
-    table.insert(state.end_cells, state.map:set(15,1,createCell()))
-    table.insert(state.end_cells, state.map:set(15,2,createCell()))
-    table.insert(state.end_cells, state.map:set(15,3,createCell()))
-    table.insert(state.end_cells, state.map:set(15,4,createCell()))
-    table.insert(state.end_cells, state.map:set(15,5,createCell()))
-  end
-
-  local active_cells = { state.start_cell }
-  for x=1,state.map.width do
-    for y=1,state.map.height do
-      local cell = state.map:get(x,y)
-      if cell then
-        assert(cell.x, "cell is missing coordinate!")
-        assert(cell.y, "cell is missing coordinate!")
-        table.insert(active_cells, cell)
-      end
-    end
-  end
-  state.active_cells = active_cells
-  state.current_cell = state.start_cell
-
-  state.bird = {
-    frame = 1,
-    x = 0,
-    y = 0,
-    cell = state.start_cell,
-    love.graphics.newImage("graphics/bird/schwalbe1.png"),
-    love.graphics.newImage("graphics/bird/schwalbe2.png"),
-    love.graphics.newImage("graphics/bird/schwalbe3.png"),
-    love.graphics.newImage("graphics/bird/schwalbe4.png"),
-    love.graphics.newImage("graphics/bird/schwalbe5.png"),
-    love.graphics.newImage("graphics/bird/schwalbe6.png"),
-    love.graphics.newImage("graphics/bird/schwalbe7.png"),
-    love.graphics.newImage("graphics/bird/schwalbe8.png"),
-    love.graphics.newImage("graphics/bird/schwalbe9.png"),
-  }
-
-  state.scroll_offset = {
-    x = 4,
-    y = 0,
-  }
-
+  love.window.setTitle("A Memory Called Home")
   love.window.setMode(1280, 720, {
     vsync = true,
     msaa = 4,
     resizable = false,
     centered = true,
   })
+
+  love.math.setRandomSeed(love.timer.getTime())
+
+  globals = {
+    levels = {
+      { type = "story", story = loadStory(1) },
+      { type = "gameplay", theme = loadTheme("meadow") },
+      { type = "story", story = loadStory(2) },
+      { type = "gameplay", theme = loadTheme("harbour") },
+      { type = "story", story = loadStory(3) },
+      { type = "story", story = loadStory(4) },
+    },
+    bird_frames = {
+      love.graphics.newImage("graphics/bird/schwalbe1.png"),
+      love.graphics.newImage("graphics/bird/schwalbe2.png"),
+      love.graphics.newImage("graphics/bird/schwalbe3.png"),
+      love.graphics.newImage("graphics/bird/schwalbe4.png"),
+      love.graphics.newImage("graphics/bird/schwalbe5.png"),
+      love.graphics.newImage("graphics/bird/schwalbe6.png"),
+      love.graphics.newImage("graphics/bird/schwalbe7.png"),
+      love.graphics.newImage("graphics/bird/schwalbe8.png"),
+      love.graphics.newImage("graphics/bird/schwalbe9.png"),
+    }
+  }
+
+  loadLevel(2)
+  
+
 end
 
 local function structuralEqual(a, b)
@@ -290,9 +352,8 @@ local function structuralEqual(a, b)
   return true
 end
 
-function love.update(dt)
-
-  -- Update current music sequencer
+local function doGameplay(dt)
+-- Update current music sequencer
 
   if state.sequence then
     state.sequence:update(dt)
@@ -300,10 +361,6 @@ function love.update(dt)
     if state.sequence:isDone() then
       state.sequence = nil
     end
-  end
-
-  if kbd.pressed.escape then
-    love.event.quit()
   end
 
   -- Do mouse input
@@ -424,7 +481,7 @@ function love.update(dt)
   -- Animate and move bird 
   do
     state.bird.frame = state.bird.frame + 9.0 * dt
-    if state.bird.frame >= #state.bird + 1.0 then
+    if state.bird.frame >= #state.bird.frames + 1.0 then
       state.bird.frame = 1
     end
 
@@ -433,6 +490,45 @@ function love.update(dt)
     state.bird.x = math.lerp(state.bird.x, center.x, 0.1)
     state.bird.y = math.lerp(state.bird.y, center.y, 0.1)
   end
+end
+
+function love.update(dt)
+  
+  if kbd.pressed.escape then
+    love.event.quit()
+  end
+
+  if kbd.pressed["1"] then
+    loadLevel(1)
+  elseif kbd.pressed["2"] then
+    loadLevel(2)
+  elseif kbd.pressed["3"] then
+    loadLevel(3)
+  elseif kbd.pressed["4"] then
+    loadLevel(4)
+  elseif kbd.pressed["5"] then
+    loadLevel(5)
+  elseif kbd.pressed["6"] then
+    loadLevel(6)
+  elseif kbd.pressed["7"] then
+    loadLevel(7)
+  elseif kbd.pressed["8"] then
+    loadLevel(8)
+  end
+
+  if state.mode == "gameplay" then
+    doGameplay(dt)
+  elseif state.mode == "story" then
+
+    state.time = state.time + dt
+
+    if not state.story.voiceover:isPlaying() then
+      loadLevel(state.level_index + 1)
+    end
+
+  elseif state.mode == "menu" then
+
+  end 
 
 
 
@@ -562,47 +658,70 @@ function love.draw(dt)
 
   love.graphics.reset()
 
-  do
-    local sw, sh = love.graphics.getDimensions()
-    local iw, ih = state.theme.backdrop:getDimensions()
+  if state.mode == "gameplay" then
 
-    local scale = math.max(sw / iw, sh / ih)
-    love.graphics.setColor(1,1,1)
-    love.graphics.draw(
-      state.theme.backdrop,
-      0, 0, 
-      0,
-      scale, scale
-    )
-  end
+    do
+      local sw, sh = love.graphics.getDimensions()
+      local iw, ih = state.theme.backdrop:getDimensions()
 
-  love.graphics.translate(state.scroll_offset.x, state.scroll_offset.y)
+      local scale = math.max(sw / iw, sh / ih)
+      love.graphics.setColor(1,1,1)
+      love.graphics.draw(
+        state.theme.backdrop,
+        0, 0, 
+        0,
+        scale, scale
+      )
+    end
 
-  if state.map then
-    drawMap(state.map)
-  end
+    love.graphics.translate(state.scroll_offset.x, state.scroll_offset.y)
 
-  do
-    local scale = 1.0
-    local img = state.bird[math.floor(state.bird.frame)]
-    love.graphics.setColor(1,1,1)
-    love.graphics.draw(
-      img,
-      state.bird.x, state.bird.y,
-      0,
-      scale, scale,
-      img:getWidth() / 2,
-      img:getHeight() / 2
-    )
-  end
+    if state.map then
+      drawMap(state.map)
+    end
 
-  love.graphics.reset()
-  if state.focused_cell then
-    love.graphics.print(
-      ("%d %d"):format(state.focused_cell.x, state.focused_cell.y),
-      10,
-      10
-    )
+    do
+      local scale = 1.0
+      local img = state.bird.frames[math.floor(state.bird.frame)]
+      love.graphics.setColor(1,1,1)
+      love.graphics.draw(
+        img,
+        state.bird.x, state.bird.y,
+        0,
+        scale, scale,
+        img:getWidth() / 2,
+        img:getHeight() / 2
+      )
+    end
+
+    love.graphics.reset()
+    if state.focused_cell then
+      love.graphics.print(
+        ("%d %d"):format(state.focused_cell.x, state.focused_cell.y),
+        10,
+        10
+      )
+    end
+  elseif state.mode == "story" then
+
+    for _, string in ipairs(state.story.strings) do
+      if state.time >= string.start and state.time <= string.stop then
+
+        local a0 = math.clamp((state.time - string.start) / 0.5, 0, 1)
+        local a1 = math.clamp((string.stop - state.time) / 0.5, 0, 1)
+
+        local a = math.min(a0, a1)
+
+        love.graphics.setColor(1,1,1,a)
+        love.graphics.printf(
+          string[1],
+          10,
+          (love.graphics.getHeight() - love.graphics.getFont():getHeight()) / 2,
+          love.graphics.getWidth() - 20,
+          "center"
+        )
+      end
+    end
   end
 end
 

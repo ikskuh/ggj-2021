@@ -42,3 +42,13 @@ function table.dupe(tab)
   end
   return t
 end
+
+function math.clamp(v, l, h)
+  if v < l then
+    return l
+  elseif v > h then
+    return h
+  else
+    return v
+  end
+end
