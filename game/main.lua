@@ -137,6 +137,7 @@ function love.load()
     end
   end
 
+  -- Generate path through the level
   do
     local seq = state.theme.track
 
@@ -146,30 +147,74 @@ function love.load()
 
     local prev_cell = nil
     local previous_pos = hexagon.OffsetCoord(0, 4)
+
+    local n_horizontals = #seq - 14
+    local horizontals = {} 
+    if n_horizontals > 0 then
+      local temp = {}
+      for i=1,state.map.width-1 do
+        temp[i] = { n=i, weight = love.math.random() }
+      end
+      table.sort(temp, function(a,b) return a.weight < b.weight end)
+      for i=n_horizontals+1,#temp do
+        temp[i] = nil
+      end
+
+      for i=1,#temp do
+        local n = temp[i].n
+        horizontals[n] = true
+      end
+
+    end
+
     for i=1,#seq do
 
       local next = nil
-      local tries = 0
-      while true do
-        next = hexagon.oddqOffsetNeighbor(previous_pos, love.math.random(2))
-        if state.map:validPos(next.col, next.row) then
-          break
-        else
-          tries = tries + 1
-          if tries > 30 then
+
+      if horizontals[previous_pos.col] then
+        horizontals[previous_pos.col] = nil
+        
+        local tries = 0
+        while true do
+          next = hexagon.OffsetCoord(previous_pos.col, previous_pos.row + (love.math.random() >= 0.5 and 1 or -1))
+          if state.map:validPos(next.col, next.row) then
             break
+          else
+            tries = tries + 1
+            if tries > 30 then
+              break
+            end
           end
         end
-      end
-      if tries > 30 then
-        break
+        if tries > 30 then
+          break
+        end
+
+      else
+        local tries = 0
+        while true do
+          next = hexagon.oddqOffsetNeighbor(previous_pos, love.math.random(2))
+          if state.map:validPos(next.col, next.row) then
+            break
+          else
+            tries = tries + 1
+            if tries > 30 then
+              break
+            end
+          end
+        end
+        if tries > 30 then
+          break
+        end
       end
 
       previous_pos = next
       local cell = state.map:set(next.col, next.row, createCell(seq[i]))
+
+      seq[i].cell = cell
       
       if prev_cell then
-        prev_cell.next = cell
+        -- prev_cell.next = cell
       end
       prev_cell = cell
     end
@@ -177,7 +222,7 @@ function love.load()
   state.start_cell = createCell()
   state.start_cell.x = 0
   state.start_cell.y = 4
-  state.start_cell.next = state.map:get(1,3)
+  -- state.start_cell.next = state.map:get(1,3)
 
   state.end_cells = { }
   do
@@ -200,6 +245,7 @@ function love.load()
     end
   end
   state.active_cells = active_cells
+  state.current_cell = state.start_cell
 
   state.bird = {
     frame = 1,
@@ -246,34 +292,19 @@ end
 
 function love.update(dt)
 
+  -- Update current music sequencer
+
+  if state.sequence then
+    state.sequence:update(dt)
+
+    if state.sequence:isDone() then
+      state.sequence = nil
+    end
+  end
+
   if kbd.pressed.escape then
     love.event.quit()
-  elseif kbd.pressed.space then
-    if state.start_cell.next then
-      local iter = state.start_cell.next or error("no")
-      local seq = { }
-      while iter do
-        if iter.note then
-          iter.note.cell = iter
-          seq[#seq + 1] = iter.note
-        end
-        iter = iter.next
-      end
-      
-      state.sequence = sequencer.create(120, state.theme, seq)
-      
-      state.sequence.onNote = function(note, index)
-        state.bird.cell = note.cell
-        state.active_cell = note.cell
-      end
-      state.sequence.onNoteEnd = function(note, index)
-        state.active_cell = nil
-      end
-
-      state.sequence:start()
-    end
-  end 
-
+  end
 
   -- Do mouse input
   do
@@ -286,26 +317,61 @@ function love.update(dt)
     state.focused_cell = state.map:get(flat_oddq.col, flat_oddq.row)
   end
 
-  -- Update current music sequencer
-
-  if state.sequence then
-    state.sequence:update(dt)
-
-    if state.sequence:isDone() then
-      state.sequence = nil
-    end
-  end
 
   -- Allow bird movement only durching non-playback
   if state.sequence == nil then
+
+    if kbd.pressed.p then
+
+        state.sequence = sequencer.create(state.theme, state.theme.track)
+        
+        state.sequence.onNote = function(note, index)
+          --state.bird.cell = note.cell
+          state.active_cell = note.cell
+        end
+        state.sequence.onNoteEnd = function(note, index)
+          state.active_cell = nil
+        end
+
+        state.sequence:start()
+
+    end
+
+    -- Run the sequence when we started
+    if kbd.pressed.space then
+      if state.start_cell.next then
+        local iter = state.start_cell.next or error("no")
+        local seq = { }
+        while iter do
+          if iter.note then
+            iter.note.cell = iter
+            seq[#seq + 1] = iter.note
+          end
+          iter = iter.next
+        end
+        
+        state.sequence = sequencer.create(state.theme, seq)
+        
+        state.sequence.onNote = function(note, index)
+          state.bird.cell = note.cell
+          state.active_cell = note.cell
+        end
+        state.sequence.onNoteEnd = function(note, index)
+          state.active_cell = nil
+        end
+
+        state.sequence:start()
+      end
+    end 
 
     -- Move bird backwards if possible
     if mouse.pressed[2] then
       
       local previous = state.start_cell
       while previous.next do
-        if previous.next == state.bird.cell then
+        if previous.next == state.current_cell then
           previous.next = nil
+          state.current_cell = previous
           state.bird.cell = previous
           break
         end
@@ -319,7 +385,7 @@ function love.update(dt)
 
       local is_neighbour = false
       do
-        local center = hexagon.OffsetCoord(state.bird.cell.x, state.bird.cell.y)
+        local center = hexagon.OffsetCoord(state.current_cell.x, state.current_cell.y)
         for i=1,6 do
           local n = hexagon.oddqOffsetNeighbor(center, i)
           if state.focused_cell == state.map:get(n.col, n.row) then
@@ -330,15 +396,22 @@ function love.update(dt)
       end
 
       if state.focused_cell.next == nil and is_neighbour then
-        if state.bird.cell then
-          state.bird.cell.next = state.focused_cell
+        if state.current_cell then
+          state.current_cell.next = state.focused_cell
         end
+        state.current_cell = state.focused_cell
         state.bird.cell = state.focused_cell
         if state.focused_cell.note and state.focused_cell.note.note then
           state.theme.notes[state.focused_cell.note.note]:stop()
           state.theme.notes[state.focused_cell.note.note]:play()
         end
       end
+    end
+  else
+    if kbd.pressed.space then
+      state.sequence:stop()
+      state.sequence = nil
+      state.bird.cell = state.current_cell
     end
   end
 
@@ -424,7 +497,7 @@ local function drawMap(map)
 
     if cell.note and cell.note.note then
       local img = state.theme.graphics[cell.note.note]
-      local scale = 0.3
+      local scale = 0.8 * 96 / img:getWidth()
       love.graphics.setColor(1, 1, 1)
       love.graphics.draw(
         img,
@@ -446,7 +519,7 @@ local function drawMap(map)
     if cell.next then
       local diff = hexagon.oddqOffsetToPixel(hexagon.OffsetCoord(cell.next.x, cell.next.y), size)
 
-      love.graphics.setColor{1,0,0}
+      love.graphics.setColor(state.theme.track.path_color or error("missing path_color in theme."))
       love.graphics.setLineWidth(5)
       love.graphics.line(
         math.lerp(center.x, diff.x, 0.1),

@@ -1,10 +1,10 @@
 local module = { }
 local TYPE = require("modules/type")
 
-function module.create(bpm, theme, sequence)
+function module.create(theme, sequence)
   local seq = {
     [TYPE] = TYPE.sequencer,
-    bpm = tonumber(bpm) or error("missing bpm"),
+    bpm = tonumber(theme.track.bpm) or error("missing bpm"),
     theme = theme or error("missing theme"),
     sequence = sequence or error("missing sequence"),
     index = 1,
@@ -19,11 +19,20 @@ function module.create(bpm, theme, sequence)
     end
   end
 
-  function seq:nextNote()
-    self.time = 0
+  function seq:stopCurrent()
+  
     if self.index > 0 then
+      local cell = self.sequence[self.index]
+      if cell.note then
+        self.theme.notes[cell.note]:stop()
+      end
       self:invokeCallback("onNoteEnd", self.sequence[self.index], self.index)
     end
+  end
+
+  function seq:nextNote()
+    self:stopCurrent()
+    self.time = 0
     self.index = self.index + 1
     if self.index <= #self.sequence then
       local cell = self.sequence[self.index]
@@ -38,6 +47,13 @@ function module.create(bpm, theme, sequence)
   function seq:start()
     self.index = 0
     self:nextNote()
+  end
+
+  function seq:stop()
+    if self.index > 0 then
+      self:stopCurrent()
+    end
+    self.index = #self.sequence + 1
   end
 
   function seq:update(dt)

@@ -1,6 +1,7 @@
 return {
-  bpm = 120,,
+  bpm = 120,
   cell_color = { 0.0, 1.0, 0.0, 0.1 },
+  path_color = { 0.5, 1.0, 0.5, 0.5 },
 
   { len = 6, note = 5 },
   { len = 2, note = 2 },
