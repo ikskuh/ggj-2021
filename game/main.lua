@@ -38,6 +38,7 @@ local function loadTheme(name)
     },
     
     backdrop = love.graphics.newImage("graphics/backdrops/" .. name .. ".png"),
+    ambient = love.audio.newSource("music/ambient/" .. name .. ".ogg", "stream"),
   }
 
   return theme
@@ -109,6 +110,8 @@ end
 function love.load()
 
   state.theme = loadTheme("default")
+  state.theme.ambient:setVolume(0.5)
+  state.theme.ambient:play()
 
   local seq = { 5, 2, 3, 6, 0, 3, 2, 0, 3, 5, 6, 2, 0, 3 }
 
