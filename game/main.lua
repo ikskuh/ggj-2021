@@ -15,36 +15,28 @@ setmetatable(_G, {
 })
 
 local function loadTheme(name)
+  local path = "tracks/" .. name
   local theme = {
     [TYPE] = TYPE.theme,
-    notes = {
-      [1] = love.audio.newSource("sounds/" .. name .. "/note-01.ogg", "static"),
-      [2] = love.audio.newSource("sounds/" .. name .. "/note-02.ogg", "static"),
-      [3] = love.audio.newSource("sounds/" .. name .. "/note-03.ogg", "static"),
-      [4] = love.audio.newSource("sounds/" .. name .. "/note-04.ogg", "static"),
-      [5] = love.audio.newSource("sounds/" .. name .. "/note-05.ogg", "static"),
-      [6] = love.audio.newSource("sounds/" .. name .. "/note-06.ogg", "static"),
-      [7] = love.audio.newSource("sounds/" .. name .. "/note-07.ogg", "static"),
-    },
-
-    graphics = {
-      [1] = love.graphics.newImage("graphics/" .. name .. "/cell-01.png"),
-      [2] = love.graphics.newImage("graphics/" .. name .. "/cell-02.png"),
-      [3] = love.graphics.newImage("graphics/" .. name .. "/cell-03.png"),
-      [4] = love.graphics.newImage("graphics/" .. name .. "/cell-04.png"),
-      [5] = love.graphics.newImage("graphics/" .. name .. "/cell-05.png"),
-      [6] = love.graphics.newImage("graphics/" .. name .. "/cell-06.png"),
-      [7] = love.graphics.newImage("graphics/" .. name .. "/cell-07.png"),
-    },
     
-    backdrop = love.graphics.newImage("graphics/backdrops/" .. name .. ".png"),
-    ambient = love.audio.newSource("music/ambient/" .. name .. ".ogg", "stream"),
+    backdrop = love.graphics.newImage(path.."/backdrop.png"),
+    ambient = love.audio.newSource(path.."/ambient.ogg", "stream"),
 
-    track = love.filesystem.load("tracks/" .. name .. ".lua")(),
+    track = love.filesystem.load(path.."/sequence.lua")(),
+
+    notes = {},
+    graphics = {},
   }
 
+  local max = 1
   for i=1,#theme.track do
     theme.track[i][TYPE] = TYPE.note
+    max = math.max(max, theme.track[i].note or 1)
+  end
+
+  for i=1,max do
+    theme.notes[i]    = love.audio.newSource((path.."/note-%02d.ogg"):format(i), "static")
+    theme.graphics[i] = love.graphics.newImage((path.."/cell-%02d.png"):format(i))
   end
 
   return theme
@@ -128,7 +120,7 @@ function love.load()
 
   love.math.setRandomSeed(love.timer.getTime())
 
-  state.theme = loadTheme("meadow")
+  state.theme = loadTheme("harbour")
   state.theme.ambient:setVolume(0.5)
   state.theme.ambient:play()
 
@@ -165,9 +157,12 @@ function love.load()
         else
           tries = tries + 1
           if tries > 30 then
-            error("failed to find a proper path")
+            break
           end
         end
+      end
+      if tries > 30 then
+        break
       end
 
       previous_pos = next
@@ -441,7 +436,7 @@ local function drawMap(map)
       )
     end
     
-    color = {0,1,0,0.1}
+    color = state.theme.track.cell_color or error("missing cell_color in theme.")
 
     if color then
       love.graphics.setColor(color)
