@@ -24,3 +24,12 @@ end
 function math.lerp(a, b, f)
   return (1.0-f)*a + (f*b)
 end
+
+function table.contains(tab, item)
+  for i,v in ipairs(tab) do 
+    if v == item then
+      return i
+    end
+  end
+  return nil
+end

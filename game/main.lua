@@ -95,6 +95,9 @@ end
 
 local state = { }
 
+local kbd = { pressed = {}, released = {} }
+local mouse = { pressed = {}, released = {},x=0, y=0, dx=0, dy=0 }
+
 local function createCell(i)
   return {
     [TYPE] = TYPE.cell,
@@ -114,7 +117,7 @@ function love.load()
 
   for x=1,state.map.width do
     for y=1,state.map.height do
-      state.map:set(x, y, createCell())
+      state.map:set(x, y, createCell(math.random(7)-1))
     end
   end
 
@@ -128,6 +131,7 @@ function love.load()
   state.start_cell = createCell()
   state.start_cell.x = 0
   state.start_cell.y = 4
+  state.start_cell.next = state.map:get(1,1)
 
   state.bird = {
     frame = 1,
@@ -145,6 +149,11 @@ function love.load()
     love.graphics.newImage("graphics/bird/schwalbe9.png"),
   }
 
+  state.scroll_offset = {
+    x = 4,
+    y = 0,
+  }
+
   love.window.setMode(1280, 720, {
     vsync = true,
     msaa = 4,
@@ -160,37 +169,92 @@ end
 local function structuralEqual(a, b)
   for k in pairs(a) do
     if a[k] ~= b[k] then
-      return true
+      return false
     end
   end
   for k in pairs(b) do
     if a[k] ~= b[k] then
-      return true
+      return false
     end
   end
   return true
 end
 
 
-
 function love.update(dt)
 
-  if love.keyboard.isDown("escape") then
+  if kbd.pressed.escape then
     love.event.quit()
-  elseif love.keyboard.isDown("space") then
-    local seq = { state.map:get(1,1) }
-    while seq[#seq].next do
-      seq[#seq + 1] = seq[#seq].next
+  elseif kbd.pressed.space then
+    if state.start_cell.next then
+      local seq = { state.start_cell.next or error("no") }
+      while seq[#seq].next do
+        seq[#seq + 1] = seq[#seq].next
+      end
+      
+      state.sequence = sequencer.create(120, state.theme, seq)
+      
+      state.sequence.onNote = function(cell, index)
+        state.bird.cell = cell
+      end
+
+      state.sequence:start()
     end
+  end 
+
+
+  -- Do mouse input
+  do
+    local mx, my = love.mouse.getPosition()
+
+    local flat_hex = hexagon.pixelToFlatHex(hexagon.Point(mx - state.scroll_offset.x, my - state.scroll_offset.y), state.map.tile_size)
+
+    local flat_oddq = hexagon.cubeToOddq(hexagon.cubeRound(hexagon.Cube(flat_hex.q, -flat_hex.q-flat_hex.r, flat_hex.r)))
+
+    state.focused_cell = state.map:get(flat_oddq.col, flat_oddq.row)
+  end
+
+  -- Move bird backwards if possible
+  if mouse.pressed[2] then
     
-    state.sequence = sequencer.create(120, state.theme, seq)
-    
-    state.sequence.onNote = function(cell, index)
-      state.bird.cell = cell
+    local previous = state.start_cell
+    while previous.next do
+      if previous.next == state.bird.cell then
+        previous.next = nil
+        state.bird.cell = previous
+        break
+      end
+      previous = previous.next
     end
 
-    state.sequence:start()
-  end 
+  end
+
+  -- Move bird forward when mouse was clicked
+  if mouse.pressed[1] and state.focused_cell then
+
+    local is_neighbour = false
+    do
+      local center = hexagon.OffsetCoord(state.bird.cell.x, state.bird.cell.y)
+      for i=1,6 do
+        local n = hexagon.oddqOffsetNeighbor(center, i)
+        if state.focused_cell == state.map:get(n.col, n.row) then
+          is_neighbour = true
+          break
+        end
+      end
+    end
+
+    if state.focused_cell.next == nil and is_neighbour then
+      if state.bird.cell then
+        state.bird.cell.next = state.focused_cell
+      end
+      state.bird.cell = state.focused_cell
+      if state.focused_cell.note then
+        state.theme.notes[state.focused_cell.note]:stop()
+        state.theme.notes[state.focused_cell.note]:play()
+      end
+    end
+  end
 
   -- Update current music sequencer
 
@@ -204,17 +268,26 @@ function love.update(dt)
 
   -- Animate and move bird 
   do
-  
-  state.bird.frame = state.bird.frame + 9.0 * dt
-  if state.bird.frame >= #state.bird + 1.0 then
-    state.bird.frame = 1
+    state.bird.frame = state.bird.frame + 9.0 * dt
+    if state.bird.frame >= #state.bird + 1.0 then
+      state.bird.frame = 1
+    end
+
+    local center = hexagon.oddqOffsetToPixel(hexagon.OffsetCoord(state.bird.cell.x,state.bird.cell.y), state.map.tile_size)
+
+    state.bird.x = math.lerp(state.bird.x, center.x, 0.1)
+    state.bird.y = math.lerp(state.bird.y, center.y, 0.1)
   end
 
-  local center = hexagon.oddqOffsetToPixel(hexagon.OffsetCoord(state.bird.cell.x,state.bird.cell.y), state.map.tile_size)
 
-  state.bird.x = math.lerp(state.bird.x, center.x, 0.1)
-  state.bird.y = math.lerp(state.bird.y, center.y, 0.1)
-end
+
+
+  kbd.pressed = {}
+  kbd.released = {}
+  mouse.pressed = {}
+  mouse.released = {}
+  mouse.dx=0
+  mouse.dy=0
 end
 
 local function drawCell(map, pos)
@@ -222,6 +295,7 @@ local function drawCell(map, pos)
   TYPE:assert(pos, "offset")
   local center = hexagon.oddqOffsetToPixel(pos, map.tile_size)
  
+  love.graphics.setLineWidth(1.5)
   for i=1,6 do
     local x0, y0 = hexagon.flatHexCorner(center, map.tile_size, i)
     local x1, y1 = hexagon.flatHexCorner(center, map.tile_size, i + 1)
@@ -240,7 +314,9 @@ local function drawMap(map)
 
   for y=1,map.height do
     for x=1,map.width do
-      local center = hexagon.oddqOffsetToPixel(hexagon.OffsetCoord(x, y), size)
+      local offset_pos = hexagon.OffsetCoord(x, y)
+
+      local center = hexagon.oddqOffsetToPixel(offset_pos, size)
 
       local cell = map:get(x, y)
 
@@ -259,15 +335,29 @@ local function drawMap(map)
         end
         
         if cell.active then
-          love.graphics.setColor(1, 1, 0)
+          love.graphics.setColor({1,1,0})
         else
-          love.graphics.setColor(0, 1, 0)
+          love.graphics.setColor({0,1,0})
         end
       else
         love.graphics.setColor(0.3, 0.5, 0.3)
       end
 
       drawCell(map, hexagon.OffsetCoord(x, y))
+
+      if cell and cell.next then
+        local diff = hexagon.oddqOffsetToPixel(hexagon.OffsetCoord(cell.next.x, cell.next.y), size)
+
+        love.graphics.setColor{1,0,0}
+        love.graphics.setLineWidth(5)
+        love.graphics.line(
+          center.x,
+          center.y,
+          math.lerp(center.x, diff.x, 0.75),
+          math.lerp(center.y, diff.y, 0.75)
+        )
+
+      end
 
       -- local cube = hexagon.oddqToCube(hexagon.OffsetCoord(x, y))
       -- local hex = hexagon.cubeToAxial(cube)
@@ -288,27 +378,12 @@ local function drawMap(map)
     end
   end
 
-  do
-    local mx, my = love.mouse.getPosition()
-
-    local flat_hex = hexagon.pixelToFlatHex(hexagon.Point(mx - 4, my - 0), size)
-
-    local flat_oddq = hexagon.cubeToOddq(hexagon.cubeRound(hexagon.Cube(flat_hex.q, -flat_hex.q-flat_hex.r, flat_hex.r)))
-
-    local cell = map:get(flat_oddq.col, flat_oddq.row)
-
+  if state.focused_cell then
+    local flat_oddq = hexagon.OffsetCoord(state.focused_cell.x, state.focused_cell.y)
     love.graphics.print(("%d %d"):format(flat_oddq.col, flat_oddq.row), 10, 10)
 
-    if cell then
-
-      for i=1,6 do
-        local n = hexagon.oddqOffsetNeighbor(flat_oddq, i)
-
-        love.graphics.setColor(1, 0, 0)
-        drawCell(map, n)
-      end
-    end
-
+    love.graphics.setColor(1,0,0,0.5)
+    drawCell(state.map, flat_oddq)
   end
 end
 
@@ -333,7 +408,7 @@ function love.draw(dt)
     )
   end
 
-  love.graphics.translate(4, 0)
+  love.graphics.translate(state.scroll_offset.x, state.scroll_offset.y)
 
   if state.map then
     drawMap(state.map)
@@ -352,4 +427,27 @@ function love.draw(dt)
       img:getHeight() / 2
     )
   end
+end
+
+function love.keypressed(key, scancode, isrepeat)
+  kbd.pressed[key] = true
+end
+
+function love.keyreleased(key, scancode)
+  kbd.released[key] = true
+end
+
+function love.mousepressed(x, y, button)
+  mouse.pressed[button] = true
+end
+
+function love.mousereleased	(x, y, button)
+  mouse.released[button] = true
+end
+
+function love.mousemoved(x, y, dx, dy)
+  mouse.x = x
+  mouse.y = y
+  mouse.dx = mouse.dx + dx
+  mouse.dy = mouse.dy + dy
 end
