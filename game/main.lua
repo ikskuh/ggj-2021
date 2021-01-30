@@ -1,39 +1,8 @@
 
+require "modules/shims"
 local hexagon = require "modules/hexagon"
 local sequencer = require "modules/sequencer"
-
--- tag identities
-local TYPE = {
-  theme = {},
-  map = {},
-  cell = {},
-} 
-
-function math.sign(x)
-  if x < 0 then
-    return -1
-  elseif x > 0 then
-    return 1
-  else
-    return 0
-  end
-end
-
-function math.rem(a, b)
-  return math.abs(math.mod(a, b))
-end
-
-function math.round(value)  
-  return math.sign(value) * math.floor(math.abs(value) + 0.5)
-end
-
-function math.lerp(a, b, f)
-  return (1.0-f)*a + (f*b)
-end
-
-for i=-20,20 do
-  print(0.1 * i, math.round(0.1 * i))
-end
+local TYPE = require "modules/type"
 
 setmetatable(_G, {
   __index = function (t,k)
@@ -91,10 +60,8 @@ local function createMap(w, h)
 
     x = tonumber(x) or error("x must be a number!")
     y = tonumber(y) or error("y must be a number!")
+    TYPE:assert(cell, "cell", true)
 
-    if cell and cell[TYPE] ~= TYPE.cell then
-      error("expected cell")
-    end
     if x < 1 or y < 1 or x > self.width or y > self.height then
       error(tostring(x)..","..tostring(y).." is out of bounds!")
     end
@@ -131,7 +98,7 @@ local state = { }
 local function createCell(i)
   return {
     [TYPE] = TYPE.cell,
-    note = tonumber(i) > 0 and tonumber(i),
+    note = i and tonumber(i) > 0 and tonumber(i),
     active = false,
   }
 end
@@ -144,6 +111,13 @@ function love.load()
 
   local prev_cell = nil
   state.map = createMap(14, 6)
+
+  for x=1,state.map.width do
+    for y=1,state.map.height do
+      state.map:set(x, y, createCell())
+    end
+  end
+
   for i=1,#seq do
     local cell = state.map:set(i, 1, createCell(seq[i]))
     if prev_cell then
@@ -151,13 +125,15 @@ function love.load()
     end
     prev_cell = cell
   end
+  state.start_cell = createCell()
+  state.start_cell.x = 0
+  state.start_cell.y = 4
 
   state.bird = {
     frame = 1,
     x = 0,
     y = 0,
-    target_x = 0,
-    target_y = 0,
+    cell = state.start_cell,
     love.graphics.newImage("graphics/bird/schwalbe1.png"),
     love.graphics.newImage("graphics/bird/schwalbe2.png"),
     love.graphics.newImage("graphics/bird/schwalbe3.png"),
@@ -181,7 +157,19 @@ end
 
 
 
-
+local function structuralEqual(a, b)
+  for k in pairs(a) do
+    if a[k] ~= b[k] then
+      return true
+    end
+  end
+  for k in pairs(b) do
+    if a[k] ~= b[k] then
+      return true
+    end
+  end
+  return true
+end
 
 
 
@@ -198,11 +186,7 @@ function love.update(dt)
     state.sequence = sequencer.create(120, state.theme, seq)
     
     state.sequence.onNote = function(cell, index)
-
-      local center = hexagon.oddqOffsetToPixel(hexagon.OffsetCoord(cell.x, cell.y), state.map.tile_size)
-
-      state.bird.target_x = center.x
-      state.bird.target_y = center.y
+      state.bird.cell = cell
     end
 
     state.sequence:start()
@@ -219,15 +203,30 @@ function love.update(dt)
   end
 
   -- Animate and move bird 
+  do
   
   state.bird.frame = state.bird.frame + 9.0 * dt
   if state.bird.frame >= #state.bird + 1.0 then
     state.bird.frame = 1
   end
 
-  state.bird.x = math.lerp(state.bird.x, state.bird.target_x, 0.1)
-  state.bird.y = math.lerp(state.bird.y, state.bird.target_y, 0.1)
+  local center = hexagon.oddqOffsetToPixel(hexagon.OffsetCoord(state.bird.cell.x,state.bird.cell.y), state.map.tile_size)
 
+  state.bird.x = math.lerp(state.bird.x, center.x, 0.1)
+  state.bird.y = math.lerp(state.bird.y, center.y, 0.1)
+end
+end
+
+local function drawCell(map, pos)
+  TYPE:assert(map, "map")
+  TYPE:assert(pos, "offset")
+  local center = hexagon.oddqOffsetToPixel(pos, map.tile_size)
+ 
+  for i=1,6 do
+    local x0, y0 = hexagon.flatHexCorner(center, map.tile_size, i)
+    local x1, y1 = hexagon.flatHexCorner(center, map.tile_size, i + 1)
+    love.graphics.line(x0, y0, x1, y1)
+  end
 end
 
 local function drawMap(map)
@@ -268,11 +267,7 @@ local function drawMap(map)
         love.graphics.setColor(0.3, 0.5, 0.3)
       end
 
-      for i=1,6 do
-        local x0, y0 = hexagon.flatHexCorner(center, size, i)
-        local x1, y1 = hexagon.flatHexCorner(center, size, i + 1)
-        love.graphics.line(x0, y0, x1, y1)
-      end
+      drawCell(map, hexagon.OffsetCoord(x, y))
 
       -- local cube = hexagon.oddqToCube(hexagon.OffsetCoord(x, y))
       -- local hex = hexagon.cubeToAxial(cube)
@@ -302,24 +297,21 @@ local function drawMap(map)
 
     local cell = map:get(flat_oddq.col, flat_oddq.row)
 
+    love.graphics.print(("%d %d"):format(flat_oddq.col, flat_oddq.row), 10, 10)
+
     if cell then
 
-      local center = hexagon.oddqOffsetToPixel(flat_oddq, size)
-
-      -- love.graphics.print(("%d %d"):format(flat_hex.q, flat_hex.r), 10, 10)
-
-      love.graphics.setColor(1, 0, 0)
       for i=1,6 do
-        local x0, y0 = hexagon.flatHexCorner(center, size, i)
-        local x1, y1 = hexagon.flatHexCorner(center, size, i + 1)
-        love.graphics.line(x0, y0, x1, y1)
+        local n = hexagon.oddqOffsetNeighbor(flat_oddq, i)
+
+        love.graphics.setColor(1, 0, 0)
+        drawCell(map, n)
       end
     end
 
   end
-  
-
 end
+
 
 
 
