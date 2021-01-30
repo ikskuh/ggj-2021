@@ -2,30 +2,43 @@
 local module = {}
 
 function module.Point(x, y) 
-  return { x=x, y=y }
+  return {
+    x=tonumber(x) or error("expected x"),
+    y=tonumber(y) or error("expected y")
+  }
 end
 
 function module.Cube(x, y, z)
-  return { x=x, y=y, z=z }
+  return {
+    x=tonumber(x) or error("expected x"), 
+    y=tonumber(y) or error("expected y"), 
+    z=tonumber(z) or error("expected z") 
+  }
 end
 
 function module.Hex(q, r)
-  return { q=q, r=r }
+  return {
+    q=tonumber(q) or error("expected q"),
+    r=tonumber(r) or error("expected r") 
+  }
 end
 
 function module.OffsetCoord(col, row)
-  return { col=col, row=row }
+  return {
+    col=tonumber(col) or error("expected col"),
+    row=tonumber(row) or error("expected row") 
+  }
 end
 
 function module.cubeToOddq(cube)
   local col = cube.x
-  local row = cube.z + (cube.x - (cube.x%2)) / 2
+  local row = cube.z + (cube.x - math.rem(cube.x, 2)) / 2
   return module.OffsetCoord(col, row)
 end
 
 function module.oddqToCube(hex)
   local x = hex.col
-  local z = hex.row - (hex.col - (hex.col%2)) / 2
+  local z = hex.row - (hex.col - math.rem(hex.col, 2)) / 2
   local y = -x-z
   return module.Cube(x, y, z)
 end
@@ -55,14 +68,26 @@ function module.pixelToFlatHex(point, size)
   return module.hexRound(module.Hex(q, r))
 end
 
+function module.flatHexToPixel(hex, size)
+  local x = size * (          3./2 * hex.q                    )
+  local y = size * (math.sqrt(3)/2 * hex.q  +  math.sqrt(3) * hex.r)
+  return module.Point(x, y)
+end
+
+function module.oddqOffsetToPixel(hex, size)
+  local x = size * 3/2 * hex.col
+  local y = size * math.sqrt(3) * (hex.row + 0.5 * math.rem(hex.col, 2))
+  return module.Point(x, y)
+end
+
 function module.hexRound(hex)
   return module.cubeToAxial(module.cubeRound(module.axialToCube(hex)))
 end
 
 function module.cubeRound(cube)
-  local rx = math.floor(cube.x + 0.5)
-  local ry = math.floor(cube.y + 0.5)
-  local rz = math.floor(cube.z + 0.5)
+  local rx = math.round(cube.x)
+  local ry = math.round(cube.y)
+  local rz = math.round(cube.z)
 
   local x_diff = math.abs(rx - cube.x)
   local y_diff = math.abs(ry - cube.y)
