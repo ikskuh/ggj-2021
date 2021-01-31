@@ -168,12 +168,22 @@ local function playBirdPath()
   if state.start_cell.next then
     local iter = state.start_cell.next or error("no")
     local seq = { }
+    local end_cell = iter
     while iter do
       if iter.note then
         iter.note.cell = iter
         seq[#seq + 1] = iter.note
       end
+      end_cell = iter
       iter = iter.next
+    end
+
+    local success = false
+    if #seq == #state.theme.track then
+      success = (end_cell.x == state.map.width)
+      for i=1,#state.theme.track do
+        success = success and (seq[i].note == state.theme.track[i].note)
+      end
     end
     
     state.sequence = sequencer.create(state.theme, seq)
@@ -184,6 +194,12 @@ local function playBirdPath()
     end
     state.sequence.onNoteEnd = function(note, index)
       state.active_cell = nil
+
+      if index == #seq and success then
+        state.success = true
+        state.theme.final:stop()
+        state.theme.final:play()
+      end
     end
 
     state.sequence:start()
@@ -381,14 +397,17 @@ local function loadLevel(index)
           seq[i].cell = cell
           
           if prev_cell then
-            -- prev_cell.next = cell
+            prev_cell.next = cell
           end
           prev_cell = cell
+
+          -- state.current_cell = cell
         end
       end
       state.start_cell = createCell()
       state.start_cell.x = 0
       state.start_cell.y = 4
+      -- state.start_cell.next = state.map:get(1,4)
 
       state.end_cells = { }
       do
