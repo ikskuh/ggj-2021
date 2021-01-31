@@ -539,6 +539,8 @@ function love.load()
       menu_button_stop     = love.graphics.newImage("graphics/stop.png"),
 
       menu_background      = love.graphics.newImage("graphics/home.png"),
+
+      cell_arrow           = love.graphics.newImage("graphics/arrow.png"),
     },
     fonts = {
       default = love.graphics.newFont("graphics/YuseiMagic-Regular.ttf", 26)
@@ -783,6 +785,20 @@ local function drawMap(map)
       love.graphics.draw(
         img,
         center.x, center.y,
+        0,
+        scale, scale,
+        img:getWidth() / 2,
+        img:getHeight() / 2
+      )
+    end
+
+    if cell.x == map.width then
+      local img = globals.graphics.cell_arrow
+      local scale = 0.8 * 96 / img:getWidth()
+      love.graphics.setColor(1, 1, 1)
+      love.graphics.draw(
+        img,
+        center.x - 20, center.y + 5,
         0,
         scale, scale,
         img:getWidth() / 2,
