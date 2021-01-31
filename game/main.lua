@@ -129,6 +129,100 @@ end
 
 local globals
 
+
+local function structuralEqual(a, b)
+  for k in pairs(a) do
+    if a[k] ~= b[k] then
+      return false
+    end
+  end
+  for k in pairs(b) do
+    if a[k] ~= b[k] then
+      return false
+    end
+  end
+  return true
+end
+
+local function undoBirdMovement()
+  if state.sequence then
+    return
+  end
+  local previous = state.start_cell
+  while previous.next do
+    if previous.next == state.current_cell then
+      previous.next = nil
+      state.current_cell = previous
+      state.bird.cell = previous
+      break
+    end
+    previous = previous.next
+  end
+end
+
+local function playBirdPath()
+  if state.sequence then
+    return
+  end
+
+  if state.start_cell.next then
+    local iter = state.start_cell.next or error("no")
+    local seq = { }
+    while iter do
+      if iter.note then
+        iter.note.cell = iter
+        seq[#seq + 1] = iter.note
+      end
+      iter = iter.next
+    end
+    
+    state.sequence = sequencer.create(state.theme, seq)
+    
+    state.sequence.onNote = function(note, index)
+      state.bird.cell = note.cell
+      state.active_cell = note.cell
+    end
+    state.sequence.onNoteEnd = function(note, index)
+      state.active_cell = nil
+    end
+
+    state.sequence:start()
+  end
+
+end
+
+local function playTruePath()
+
+  if state.sequence then
+    return
+  end
+
+  state.sequence = sequencer.create(state.theme, state.theme.track)
+  
+  state.sequence.onNote = function(note, index)
+    --state.bird.cell = note.cell
+    state.active_cell = note.cell
+  end
+  state.sequence.onNoteEnd = function(note, index)
+    state.active_cell = nil
+  end
+
+  state.sequence:start()
+
+end
+
+local function stopPlayback()
+
+  if not state.sequence then
+    return
+  end
+
+  state.sequence:stop()
+  state.sequence = nil
+  state.bird.cell = state.current_cell
+
+end
+
 local function loadLevel(index)
 
   if state then
@@ -156,6 +250,46 @@ local function loadLevel(index)
       state.theme = level.theme or error("gameplay requires theme!")
       state.theme.ambient:setVolume(0.5)
       state.theme.ambient:play()
+
+      state.buttons = {
+        sequence = {},
+        gameplay = {},
+      }
+
+      state.ui = ui.create(globals.sounds)
+      state.buttons.gameplay[1] = state.ui:add {
+        x = 496,
+        y = 624,
+        width = 96,
+        height = 96,
+        graphic = globals.graphics.menu_button_undo,
+        clicked = undoBirdMovement,
+      }
+      state.buttons.gameplay[2] = state.ui:add {
+        x = 592,
+        y = 624,
+        width = 96,
+        height = 96,
+        graphic = globals.graphics.menu_button_listen,
+        clicked = playTruePath,
+      }
+      state.buttons.gameplay[3] = state.ui:add {
+        x = 688,
+        y = 624,
+        width = 96,
+        height = 96,
+        graphic = globals.graphics.menu_button_play,
+        clicked = playBirdPath,
+      }
+
+      state.buttons.sequence[1] = state.ui:add {
+        x = 592,
+        y = 624,
+        width = 96,
+        height = 96,
+        graphic = globals.graphics.menu_button_stop,
+        clicked = stopPlayback,
+      }
 
       state.map = createMap(15, 6)
 
@@ -299,31 +433,31 @@ local function loadLevel(index)
 
     state.ui = ui.create(globals.sounds)
 
-    state.ui:add({
+    state.ui:add{
       x = 705,
       y = 121,
       width = 272,
       height = 145,
       graphic = globals.graphics.menu_button_start,
       clicked = function() loadLevel(1) end
-    })
+    }
 
-    state.ui:add({
+    state.ui:add{
       x = 686,
       y = 216,
       width = 290,
       height = 135,
       graphic = globals.graphics.menu_button_credits,
-    })
+    }
 
-    state.ui:add({
+    state.ui:add{
       x = 724,
       y = 348,
       width = 242,
       height = 105,
       graphic = globals.graphics.menu_button_quit,
       clicked = function() love.event.quit() end
-    })
+    }
 
   end
 
@@ -383,6 +517,7 @@ function love.load()
       menu_button_listen   = love.graphics.newImage("graphics/listen.png"),
       menu_button_play     = love.graphics.newImage("graphics/play.png"),
       menu_button_undo     = love.graphics.newImage("graphics/undo.png"),
+      menu_button_stop     = love.graphics.newImage("graphics/stop.png"),
 
       menu_background      = love.graphics.newImage("graphics/home.png"),
     },
@@ -404,20 +539,6 @@ function love.load()
   loadLevel(nil)
 end
 
-local function structuralEqual(a, b)
-  for k in pairs(a) do
-    if a[k] ~= b[k] then
-      return false
-    end
-  end
-  for k in pairs(b) do
-    if a[k] ~= b[k] then
-      return false
-    end
-  end
-  return true
-end
-
 local function doGameplay(dt, prevent_mouse_input)
 -- Update current music sequencer
 
@@ -429,6 +550,16 @@ local function doGameplay(dt, prevent_mouse_input)
     end
   end
 
+  local sequence_active = (state.sequence ~= nil)
+
+  for i=1,#state.buttons.gameplay do
+    state.buttons.gameplay[i].visible = not sequence_active
+  end
+
+  for i=1,#state.buttons.sequence do
+    state.buttons.sequence[i].visible = sequence_active
+  end
+
   -- Do mouse input
   do
     local mx, my = love.mouse.getPosition()
@@ -437,69 +568,29 @@ local function doGameplay(dt, prevent_mouse_input)
 
     local flat_oddq = hexagon.cubeToOddq(hexagon.cubeRound(hexagon.Cube(flat_hex.q, -flat_hex.q-flat_hex.r, flat_hex.r)))
 
-    state.focused_cell = state.map:get(flat_oddq.col, flat_oddq.row)
+    if not prevent_mouse_input then
+      state.focused_cell = state.map:get(flat_oddq.col, flat_oddq.row)
+    else
+      state.focused_cell = nil
+    end
   end
-
 
   -- Allow bird movement only durching non-playback
   if state.sequence == nil then
 
     if kbd.pressed.p then
-
-        state.sequence = sequencer.create(state.theme, state.theme.track)
-        
-        state.sequence.onNote = function(note, index)
-          --state.bird.cell = note.cell
-          state.active_cell = note.cell
-        end
-        state.sequence.onNoteEnd = function(note, index)
-          state.active_cell = nil
-        end
-
-        state.sequence:start()
-
+      playTruePath()
     end
 
     -- Run the sequence when we started
     if kbd.pressed.space then
-      if state.start_cell.next then
-        local iter = state.start_cell.next or error("no")
-        local seq = { }
-        while iter do
-          if iter.note then
-            iter.note.cell = iter
-            seq[#seq + 1] = iter.note
-          end
-          iter = iter.next
-        end
-        
-        state.sequence = sequencer.create(state.theme, seq)
-        
-        state.sequence.onNote = function(note, index)
-          state.bird.cell = note.cell
-          state.active_cell = note.cell
-        end
-        state.sequence.onNoteEnd = function(note, index)
-          state.active_cell = nil
-        end
-
-        state.sequence:start()
-      end
+      playBirdPath()
     end 
 
     -- Move bird backwards if possible
     if not prevent_mouse_input and  mouse.pressed[2] then
       
-      local previous = state.start_cell
-      while previous.next do
-        if previous.next == state.current_cell then
-          previous.next = nil
-          state.current_cell = previous
-          state.bird.cell = previous
-          break
-        end
-        previous = previous.next
-      end
+      undoBirdMovement()
 
     end
 
@@ -532,9 +623,7 @@ local function doGameplay(dt, prevent_mouse_input)
     end
   else
     if kbd.pressed.space then
-      state.sequence:stop()
-      state.sequence = nil
-      state.bird.cell = state.current_cell
+      stopPlayback()
     end
   end
 
@@ -588,7 +677,13 @@ function love.update(dt)
   end
 
   if state.mode == "gameplay" then
-    doGameplay(dt, prevent_mouse_input)
+    if state.success then
+      if not state.theme.final:isPlaying() then
+        loadLevel(state.level_index + 1)
+      end
+    else
+      doGameplay(dt, prevent_mouse_input)
+    end
   elseif state.mode == "story" then
 
     state.time = state.time + dt
@@ -715,7 +810,7 @@ local function drawMap(map)
 
   if state.focused_cell then
     local flat_oddq = hexagon.OffsetCoord(state.focused_cell.x, state.focused_cell.y)
-    love.graphics.print(("%d %d"):format(flat_oddq.col, flat_oddq.row), 10, 10)
+    -- love.graphics.print(("%d %d"):format(flat_oddq.col, flat_oddq.row), 10, 10)
 
     love.graphics.setColor(1,0,0,0.5)
     drawCell(state.map, flat_oddq)
@@ -747,34 +842,37 @@ function love.draw(dt)
       )
     end
 
-    love.graphics.translate(state.scroll_offset.x, state.scroll_offset.y)
+    if not state.success then
 
-    if state.map then
-      drawMap(state.map)
-    end
+      love.graphics.translate(state.scroll_offset.x, state.scroll_offset.y)
 
-    do
-      local scale = 1.0
-      local img = state.bird.frames[math.floor(state.bird.frame)]
-      love.graphics.setColor(1,1,1)
-      love.graphics.draw(
-        img,
-        state.bird.x, state.bird.y,
-        0,
-        scale, scale,
-        img:getWidth() / 2,
-        img:getHeight() / 2
-      )
+      if state.map then
+        drawMap(state.map)
+      end
+
+      do
+        local scale = 1.0
+        local img = state.bird.frames[math.floor(state.bird.frame)]
+        love.graphics.setColor(1,1,1)
+        love.graphics.draw(
+          img,
+          state.bird.x, state.bird.y,
+          0,
+          scale, scale,
+          img:getWidth() / 2,
+          img:getHeight() / 2
+        )
+      end
     end
 
     love.graphics.reset()
-    if state.focused_cell then
-      love.graphics.print(
-        ("%d %d"):format(state.focused_cell.x, state.focused_cell.y),
-        10,
-        10
-      )
-    end
+    -- if state.focused_cell then
+    --   love.graphics.print(
+    --     ("%d %d"):format(state.focused_cell.x, state.focused_cell.y),
+    --     10,
+    --     10
+    --   )
+    -- end
   elseif state.mode == "story" then
 
     for _, string in ipairs(state.story.strings) do

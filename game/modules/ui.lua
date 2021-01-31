@@ -31,28 +31,30 @@ function module.create(sound_set)
     local any_clicked = false
 
     local hovered = nil
+    for i=1,#self.elements do
+      local widget = self.elements[i]
+      widget.hovered = false
+    end
     
     for i=1,#self.elements do
       local widget = self.elements[i]
 
-      if mx >= widget.x and my >= widget.y and mx < widget.x+widget.width and my < widget.y+widget.height then
-        any_hovered = true
-        hovered = widget
-        widget.hovered = true
+      if widget.visible == nil or widget.visible then
+        if mx >= widget.x and my >= widget.y and mx < widget.x+widget.width and my < widget.y+widget.height then
+          any_hovered = true
+          hovered = widget
+          widget.hovered = true
 
-        if not any_clicked and mouse.pressed[1] then 
-          any_clicked = true
-        
-          self.sound_set.confirm:play()
+          if not any_clicked and mouse.pressed[1] then 
+            any_clicked = true
+          
+            self.sound_set.confirm:play()
 
-          if widget.clicked then
-            widget.clicked(widget, mx, my)
+            if widget.clicked then
+              widget.clicked(widget, mx, my)
+            end
           end
-
         end
-        
-      else
-        widget.hovered = false
       end
     end
 
@@ -67,24 +69,23 @@ function module.create(sound_set)
   function ui:draw()
     for i=1,#self.elements do
       local widget = self.elements[i]
+      if widget.visible == nil or widget.visible then
+        if widget.graphic then
+          if widget.hovered then
+            love.graphics.setColor(0.8,0.8,0.8)
+          else
+            love.graphics.setColor(1.0,1.0,1.0)
+          end
 
-      if widget.graphic then
-
-        if widget.hovered then
-          love.graphics.setColor(0.8,0.8,0.8)
-        else
-          love.graphics.setColor(1.0,1.0,1.0)
+          love.graphics.draw(
+            widget.graphic,
+            widget.x, widget.y,
+            0,
+            widget.width / widget.graphic:getWidth(),
+            widget.height / widget.graphic:getHeight()
+          )
         end
-
-        love.graphics.draw(
-          widget.graphic,
-          widget.x, widget.y,
-          0,
-          widget.width / widget.graphic:getWidth(),
-          widget.height / widget.graphic:getHeight()
-        )
       end
-
     end
   end
 
