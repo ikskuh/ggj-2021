@@ -397,7 +397,7 @@ local function loadLevel(index)
           seq[i].cell = cell
           
           if prev_cell then
-            prev_cell.next = cell
+            -- prev_cell.next = cell
           end
           prev_cell = cell
 
