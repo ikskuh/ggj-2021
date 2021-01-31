@@ -6,5 +6,7 @@ return typecheck.create(
   -- hex coordinates  
   "point", "cube", "hex", "offset",
   -- sequencer
-  "sequencer", "note"
+  "sequencer", "note",
+  -- ui
+  "widget"
 )

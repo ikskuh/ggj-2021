@@ -2,6 +2,7 @@
 require "modules/shims"
 local hexagon = require "modules/hexagon"
 local sequencer = require "modules/sequencer"
+local ui = require "modules/ui"
 local TYPE = require "modules/type"
 
 setmetatable(_G, {
@@ -293,10 +294,51 @@ local function loadLevel(index)
       error("invalid level type!")
     end
   else
-    state = { mode="story" }
+    state = { mode="menu" }
+
+    state.ui = ui.create(globals.sounds)
+
+    state.ui:add({
+      x = 10,
+      y = 10,
+      width = 100,
+      height = 25,
+      graphic = globals.graphics.menu_button_start,
+      clicked = function() loadLevel(1) end
+    })
+
+    state.ui:add({
+      x = 10,
+      y = 40,
+      width = 100,
+      height = 25,
+      graphic = globals.graphics.menu_button_credits,
+    })
+
+    state.ui:add({
+      x = 10,
+      y = 70,
+      width = 100,
+      height = 25,
+      graphic = globals.graphics.menu_button_quit,
+      clicked = function() love.event.quit() end
+    })
+
   end
 
   state.level_index = level and tonumber(index) 
+end
+
+local function SoundGroup(items)
+  local group = {
+    elements = items,
+  }
+  function group:play() 
+    local i = love.math.random(#self.elements)
+    self.elements[i]:stop()
+    self.elements[i]:play()
+  end
+  return group
 end
 
 function love.load()
@@ -330,12 +372,33 @@ function love.load()
       love.graphics.newImage("graphics/bird/schwalbe7.png"),
       love.graphics.newImage("graphics/bird/schwalbe8.png"),
       love.graphics.newImage("graphics/bird/schwalbe9.png"),
+    },
+    graphics = {
+      menu_button_start    = love.graphics.newImage("graphics/start.png"),
+      menu_button_credits  = love.graphics.newImage("graphics/credits.png"),
+      menu_button_quit     = love.graphics.newImage("graphics/quit.png"),
+
+      menu_button_listen   = love.graphics.newImage("graphics/listen.png"),
+      menu_button_play     = love.graphics.newImage("graphics/play.png"),
+      menu_button_undo     = love.graphics.newImage("graphics/undo.png"),
+
+    },
+    fonts = {
+      default = love.graphics.newFont("graphics/YuseiMagic-Regular.ttf", 26)
+    },
+    sounds = {
+      hover = SoundGroup {
+        love.audio.newSource("sounds/hover_01.ogg", "static"),
+        love.audio.newSource("sounds/hover_02.ogg", "static"),
+        love.audio.newSource("sounds/hover_03.ogg", "static"),
+      },
+      confirm = SoundGroup { 
+        love.audio.newSource("sounds/confirm.ogg", "static"),
+      },
     }
   }
 
-  loadLevel(2)
-  
-
+  loadLevel(nil)
 end
 
 local function structuralEqual(a, b)
@@ -352,7 +415,7 @@ local function structuralEqual(a, b)
   return true
 end
 
-local function doGameplay(dt)
+local function doGameplay(dt, prevent_mouse_input)
 -- Update current music sequencer
 
   if state.sequence then
@@ -422,7 +485,7 @@ local function doGameplay(dt)
     end 
 
     -- Move bird backwards if possible
-    if mouse.pressed[2] then
+    if not prevent_mouse_input and  mouse.pressed[2] then
       
       local previous = state.start_cell
       while previous.next do
@@ -438,7 +501,7 @@ local function doGameplay(dt)
     end
 
     -- Move bird forward when mouse was clicked
-    if mouse.pressed[1] and state.focused_cell then
+    if not prevent_mouse_input and mouse.pressed[1] and state.focused_cell then
 
       local is_neighbour = false
       do
@@ -516,8 +579,13 @@ function love.update(dt)
     loadLevel(8)
   end
 
+  local prevent_mouse_input = false
+  if state.ui then
+    prevent_mouse_input = state.ui:update(mouse)
+  end
+
   if state.mode == "gameplay" then
-    doGameplay(dt)
+    doGameplay(dt, prevent_mouse_input)
   elseif state.mode == "story" then
 
     state.time = state.time + dt
@@ -658,6 +726,8 @@ function love.draw(dt)
 
   love.graphics.reset()
 
+  love.graphics.setFont(globals.fonts.default)
+
   if state.mode == "gameplay" then
 
     do
@@ -722,6 +792,12 @@ function love.draw(dt)
         )
       end
     end
+  end
+
+  love.graphics.reset()
+
+  if state.ui then
+    state.ui:draw()
   end
 end
 
