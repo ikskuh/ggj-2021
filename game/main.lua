@@ -22,6 +22,7 @@ local function loadTheme(name)
     
     backdrop = love.graphics.newImage(path.."/backdrop.png"),
     ambient = love.audio.newSource(path.."/ambient.ogg", "stream"),
+    final = love.audio.newSource(path.."/final.ogg", "stream"),
 
     track = assert(love.filesystem.load(path.."/sequence.lua"))(),
 
@@ -299,27 +300,27 @@ local function loadLevel(index)
     state.ui = ui.create(globals.sounds)
 
     state.ui:add({
-      x = 10,
-      y = 10,
-      width = 100,
-      height = 25,
+      x = 705,
+      y = 121,
+      width = 272,
+      height = 145,
       graphic = globals.graphics.menu_button_start,
       clicked = function() loadLevel(1) end
     })
 
     state.ui:add({
-      x = 10,
-      y = 40,
-      width = 100,
-      height = 25,
+      x = 686,
+      y = 216,
+      width = 290,
+      height = 135,
       graphic = globals.graphics.menu_button_credits,
     })
 
     state.ui:add({
-      x = 10,
-      y = 70,
-      width = 100,
-      height = 25,
+      x = 724,
+      y = 348,
+      width = 242,
+      height = 105,
       graphic = globals.graphics.menu_button_quit,
       clicked = function() love.event.quit() end
     })
@@ -383,6 +384,7 @@ function love.load()
       menu_button_play     = love.graphics.newImage("graphics/play.png"),
       menu_button_undo     = love.graphics.newImage("graphics/undo.png"),
 
+      menu_background      = love.graphics.newImage("graphics/home.png"),
     },
     fonts = {
       default = love.graphics.newFont("graphics/YuseiMagic-Regular.ttf", 26)
@@ -559,7 +561,7 @@ end
 function love.update(dt)
   
   if kbd.pressed.escape then
-    love.event.quit()
+    loadLevel(nil)
   end
 
   if kbd.pressed["1"] then
@@ -792,6 +794,20 @@ function love.draw(dt)
           "center"
         )
       end
+    end
+  elseif state.mode == "menu" then
+    do
+      local sw, sh = love.graphics.getDimensions()
+      local iw, ih = globals.graphics.menu_background:getDimensions()
+
+      local scale = math.max(sw / iw, sh / ih)
+      love.graphics.setColor(1,1,1)
+      love.graphics.draw(
+        globals.graphics.menu_background,
+        0, 0, 
+        0,
+        scale, scale
+      )
     end
   end
 
