@@ -23,7 +23,7 @@ local function loadTheme(name)
     backdrop = love.graphics.newImage(path.."/backdrop.png"),
     ambient = love.audio.newSource(path.."/ambient.ogg", "stream"),
 
-    track = love.filesystem.load(path.."/sequence.lua")(),
+    track = assert(love.filesystem.load(path.."/sequence.lua"))(),
 
     notes = {},
     graphics = {},
@@ -47,7 +47,7 @@ local function loadStory(index)
   local path = ("story/Story_%02d"):format(index)
   local story = {
     voiceover = love.audio.newSource(path..".ogg", "stream"),
-    strings = love.filesystem.load(path..".lua")(),
+    strings = assert(love.filesystem.load(path..".lua"))(),
   }
   return story
 end
@@ -343,7 +343,7 @@ end
 
 function love.load()
 
-  love.window.setTitle("A Memory Called Home")
+  love.window.setTitle("A Melody Called Home")
   love.window.setMode(1280, 720, {
     vsync = true,
     msaa = 4,
@@ -360,6 +360,7 @@ function love.load()
       { type = "story", story = loadStory(2) },
       { type = "gameplay", theme = loadTheme("harbour") },
       { type = "story", story = loadStory(3) },
+      { type = "gameplay", theme = loadTheme("graveyard") },
       { type = "story", story = loadStory(4) },
     },
     bird_frames = {
