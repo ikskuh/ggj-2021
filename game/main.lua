@@ -444,6 +444,10 @@ local function loadLevel(index)
         x = 4,
         y = 0,
       }
+    elseif level.type == "manual" then
+      state = { mode="manual" }
+    elseif level.type == "credits" then
+      state = { mode="credits" }
     else 
       error("invalid level type!")
     end
@@ -454,7 +458,7 @@ local function loadLevel(index)
 
     state.ui:add{
       x = 705,
-      y = 121,
+      y = 101,
       width = 272,
       height = 145,
       graphic = globals.graphics.menu_button_start,
@@ -463,15 +467,25 @@ local function loadLevel(index)
 
     state.ui:add{
       x = 686,
-      y = 216,
+      y = 196,
+      width = 290,
+      height = 135,
+      graphic = globals.graphics.menu_button_help,
+      clicked = function() loadLevel(9) end
+    }
+
+    state.ui:add{
+      x = 686,
+      y = 276,
       width = 290,
       height = 135,
       graphic = globals.graphics.menu_button_credits,
+      clicked = function() loadLevel(10) end
     }
 
     state.ui:add{
       x = 724,
-      y = 348,
+      y = 388,
       width = 242,
       height = 105,
       graphic = globals.graphics.menu_button_quit,
@@ -509,13 +523,16 @@ function love.load()
 
   globals = {
     levels = {
-      { type = "story", story = loadStory(1) },
-      { type = "gameplay", theme = loadTheme("meadow") },
-      { type = "story", story = loadStory(2) },
-      { type = "gameplay", theme = loadTheme("harbour") },
-      { type = "story", story = loadStory(3) },
-      { type = "gameplay", theme = loadTheme("graveyard") },
-      { type = "story", story = loadStory(4) },
+      { type = "story", story = loadStory(1) },              -- 1
+      { type = "gameplay", theme = loadTheme("meadow") },    -- 2
+      { type = "story", story = loadStory(2) },              -- 3
+      { type = "gameplay", theme = loadTheme("harbour") },   -- 4
+      { type = "story", story = loadStory(3) },              -- 5
+      { type = "gameplay", theme = loadTheme("graveyard") }, -- 6
+      { type = "story", story = loadStory(4) },              -- 7
+      nil,                                                   -- 8
+      { type = "manual" },                                   -- 9
+      { type = "credits" },                                  -- 10
     },
     bird_frames = {
       love.graphics.newImage("graphics/bird/schwalbe1.png"),
@@ -532,6 +549,7 @@ function love.load()
       menu_button_start    = love.graphics.newImage("graphics/start.png"),
       menu_button_credits  = love.graphics.newImage("graphics/credits.png"),
       menu_button_quit     = love.graphics.newImage("graphics/quit.png"),
+      menu_button_help     = love.graphics.newImage("graphics/help.png"),
 
       menu_button_listen   = love.graphics.newImage("graphics/listen.png"),
       menu_button_play     = love.graphics.newImage("graphics/play.png"),
@@ -539,6 +557,8 @@ function love.load()
       menu_button_stop     = love.graphics.newImage("graphics/stop.png"),
 
       menu_background      = love.graphics.newImage("graphics/home.png"),
+      menu_credits         = love.graphics.newImage("graphics/creditscreen.png"),
+      menu_help            = love.graphics.newImage("graphics/manual.png"),
 
       cell_arrow           = love.graphics.newImage("graphics/arrow.png"),
     },
@@ -671,6 +691,7 @@ end
 function love.update(dt)
   
   if kbd.pressed.escape then
+    globals.sounds.confirm:play()
     loadLevel(nil)
   end
 
@@ -711,6 +732,15 @@ function love.update(dt)
 
     if not state.story.voiceover:isPlaying() then
       loadLevel(state.level_index + 1)
+    end
+
+  elseif state.mode == "credits" or state.mode == "manual" then
+    
+    if not prevent_mouse_input then
+      if kbd.pressed.space or mouse.pressed[1] or mouse.pressed[2] then
+        globals.sounds.confirm:play()
+        loadLevel(nil)
+      end
     end
 
   elseif state.mode == "menu" then
@@ -937,6 +967,34 @@ function love.draw(dt)
       love.graphics.setColor(1,1,1)
       love.graphics.draw(
         globals.graphics.menu_background,
+        0, 0, 
+        0,
+        scale, scale
+      )
+    end
+  elseif state.mode == "credits" then
+    do
+      local sw, sh = love.graphics.getDimensions()
+      local iw, ih = globals.graphics.menu_credits:getDimensions()
+
+      local scale = math.max(sw / iw, sh / ih)
+      love.graphics.setColor(1,1,1)
+      love.graphics.draw(
+        globals.graphics.menu_credits,
+        0, 0, 
+        0,
+        scale, scale
+      )
+    end
+  elseif state.mode == "manual" then
+    do
+      local sw, sh = love.graphics.getDimensions()
+      local iw, ih = globals.graphics.menu_help:getDimensions()
+
+      local scale = math.max(sw / iw, sh / ih)
+      love.graphics.setColor(1,1,1)
+      love.graphics.draw(
+        globals.graphics.menu_help,
         0, 0, 
         0,
         scale, scale
