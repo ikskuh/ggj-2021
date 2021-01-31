@@ -60,7 +60,12 @@ function module.create(theme, sequence)
     if self:isDone() then
       return 
     end
-    local len = self.sequence[self.index].len or 1
+    local len
+    if self.index <= #self.theme.track then
+      len = self.theme.track[self.index].len or 1
+    else
+      len = self.sequence[self.index].len or 1
+    end
     if self.time >= len * 60 / self.bpm then
       if self.index < #self.sequence then
         self:nextNote()
